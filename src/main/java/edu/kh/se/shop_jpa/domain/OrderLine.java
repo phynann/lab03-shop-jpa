@@ -39,4 +39,14 @@ public class OrderLine {
     public Product getProduct() { return product; }
     public int getQuantity() { return quantity; }
     public Money getUnitPrice() { return unitPrice; }
+
+    void setOrder(Order order) { this.order = order; }
+
+    @Override public boolean equals(Object o) {
+        return this == o || (o instanceof OrderLine other && id != null && id.equals(other.getId()));
+    }
+    @Override public int hashCode() { return OrderLine.class.hashCode(); }
+    @Override public String toString() {
+        return "OrderLine[id=%d, quantity=%d, unitPrice=%s]".formatted(id, quantity, unitPrice);
+    }
 }

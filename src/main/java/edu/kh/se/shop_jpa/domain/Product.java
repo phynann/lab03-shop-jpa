@@ -45,6 +45,11 @@ public class Product {
         this.stock = 0;
     }
 
+    public void tag(Tag tag) {
+        tags.add(tag);
+        tag.getProducts().add(this);
+    }
+
     public Long getId() { return id; }
     public String getSku() { return sku; }
     public String getName() { return name; }
@@ -56,4 +61,12 @@ public class Product {
     public void setName(String name) { this.name = name; }
     public void setPrice(Money price) { this.price = price; }
     public void setStock(int stock) { this.stock = stock; }
+
+    @Override public boolean equals(Object o) {
+        return this == o || (o instanceof Product other && id != null && id.equals(other.getId()));
+    }
+    @Override public int hashCode() { return Product.class.hashCode(); }
+    @Override public String toString() {
+        return "Product[id=%d, sku=%s, name=%s, category=%s, stock=%d]".formatted(id, sku, name, category, stock);
+    }
 }

@@ -1,6 +1,10 @@
 package edu.kh.se.shop_jpa.domain;
 
+import java.math.BigDecimal;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import jakarta.persistence.*;
 
 @Entity
@@ -18,10 +22,13 @@ public class Order {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
-    private OrderStatus status;
+    private OrderStatus status = OrderStatus.NEW;
 
     @Column(name = "placed_at", nullable = false)
-    private Instant placedAt;
+    private Instant placedAt = Instant.now();
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<OrderLine> lines = new ArrayList<>();
 
     @Version
     @Column(nullable = false)
@@ -29,10 +36,27 @@ public class Order {
 
     protected Order() { }
 
-    public Order(Customer customer) {
-        this.customer = customer;
-        this.status = OrderStatus.NEW;
-        this.placedAt = Instant.now();
+    public Order(Customer customer) { this.customer = customer; }
+
+    public OrderLine addLine(Product product, int quantity) {
+        OrderLine line = new OrderLine(this, product, quantity, product.getPrice());
+        lines.add(line);
+        return line;
+    }
+
+    public void removeLine(OrderLine line) {
+        lines.remove(line);
+        line.setOrder(null);
+    }
+
+    public List<OrderLine> getLines() { return Collections.unmodifiableList(lines); }
+
+    public Money total() {
+        BigDecimal sum = BigDecimal.ZERO;
+        for (OrderLine l : lines) {
+            sum = sum.add(l.getUnitPrice().times(l.getQuantity()).amount());
+        }
+        return new Money(sum, "EUR");
     }
 
     public Long getId() { return id; }
@@ -40,6 +64,11 @@ public class Order {
     public OrderStatus getStatus() { return status; }
     public Instant getPlacedAt() { return placedAt; }
     public long getVersion() { return version; }
-
     public void setStatus(OrderStatus status) { this.status = status; }
+
+    @Override public boolean equals(Object o) {
+        return this == o || (o instanceof Order other && id != null && id.equals(other.getId()));
+    }
+    @Override public int hashCode() { return Order.class.hashCode(); }
+    @Override public String toString() { return "Order[id=%d, status=%s]".formatted(id, status); }
 }

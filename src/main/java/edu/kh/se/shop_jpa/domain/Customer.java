@@ -47,4 +47,10 @@ public class Customer {
     public void setEmail(String email) { this.email = email; }
     public void setBilling(Address billing) { this.billing = billing; }
     public void setShipping(Address shipping) { this.shipping = shipping; }
+
+    @Override public boolean equals(Object o) {
+        return this == o || (o instanceof Customer other && id != null && id.equals(other.getId()));
+    }
+    @Override public int hashCode() { return Customer.class.hashCode(); }
+    @Override public String toString() { return "Customer[id=%d, name=%s, email=%s]".formatted(id, name, email); }
 }
