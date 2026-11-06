@@ -1,17 +1,170 @@
-# task 1 - Entities and mappings, validated by Flyway
+# Shop JPA – Entities, Associations, and Entity Identity
 
-## 1. Column `sku` renamed to `code` in the SQL only
+## Task 1 – Entities and Mappings Validated by Flyway
 
-```
-Unable to build Hibernate SessionFactory [persistence unit: default] ;
-nested exception is org.hibernate.tool.schema.spi.SchemaManagementException:
+### 1. Entity Mappings
+
+The project uses JPA entities to map Java classes to database tables. Hibernate validates the entity mappings against the database schema managed by Flyway.
+
+### 2. Schema Validation
+
+I tested schema validation by intentionally changing the database schema so that it did not match the entity mappings.
+
+**Test 1: Rename the `sku` column to `code` in SQL only**
+
+Hibernate reported the following error:
+
+```text
 Schema validation: missing column [sku] in table [product]
 ```
 
-## 2. Sequence declared `INCREMENT BY 1`
+This happened because the entity mapping expected a column named `sku`, but the database contained a column named `code`.
 
+**Test 2: Sequence increment mismatch**
+
+I declared the database sequence with `INCREMENT BY 1`, while the entity mapping used an allocation size of 50.
+
+Hibernate reported:
+
+```text
+The increment size of the [product_seq] sequence is set to [50]
+in the entity mapping but the mapped database sequence increment size is [1]
 ```
-Unable to build Hibernate SessionFactory [persistence unit: default] ;
-nested exception is org.hibernate.MappingException:
-The increment size of the [product_seq] sequence is set to [50] in the entity mapping but the mapped database sequence increment size is [1]
+
+This happened because the sequence increment in the database did not match the allocation size configured in the entity mapping.
+
+These tests demonstrate that Hibernate validates the entity mappings against the database schema.
+
+---
+
+## Task 2 – Associations, Cascading, and Entity Identity
+
+### 1. Order and OrderLine Association
+
+The `Order` entity owns a collection of `OrderLine` entities through a bidirectional one-to-many relationship.
+
+The `Order` entity uses:
+
+- `@OneToMany`
+- `mappedBy = "order"`
+- `cascade = CascadeType.ALL`
+- `orphanRemoval = true`
+
+The `OrderLine` entity uses `@ManyToOne` to reference its `Order`.
+
+The `Order` entity provides methods to manage the relationship:
+
+- `addLine(Product, int)` creates an order line, sets its order reference, and copies the product price into the line's unit price.
+- `removeLine(OrderLine)` removes the line from the collection and clears its order reference.
+- `getLines()` provides read-only access to the order lines.
+
+### 2. Order Total
+
+The `total()` method calculates the order total by multiplying each line's unit price by its quantity and adding the results together.
+
+An empty order returns zero EUR.
+
+### 3. Product and Tag Many-to-Many Association
+
+The `Product` and `Tag` entities use a bidirectional many-to-many relationship.
+
+- `Product` uses `@ManyToMany` with a join table named `product_tag`.
+- `Tag` uses `@ManyToMany(mappedBy = "tags")` as the inverse side.
+- Both entities maintain a `Set` to store their associated entities.
+
+The `Product.tag(Tag)` method adds a tag to the product and updates the tag's product collection to keep both sides synchronized.
+
+### 4. Entity Equality and Hash Code
+
+All entities use handwritten `equals()` and `hashCode()` methods.
+
+The equality implementation follows these rules:
+
+- Two entities must be the same class.
+- Two entities are equal when both have non-null IDs with the same value.
+- Entities with null IDs are not considered equal.
+- `hashCode()` returns a constant value for each entity class.
+
+The entity `toString()` methods include scalar fields only and do not include relationships to other entities.
+
+### 5. OrderCascadeTest
+
+The `OrderCascadeTest` uses `@DataJpaTest` and `TestEntityManager` to test persistence, cascading, and orphan removal.
+
+**Persist and reload**
+
+The test creates and persists:
+
+- One customer
+- Two products
+- One order
+- Two order lines
+
+After flushing, the SQL output confirms:
+
+- One `INSERT` into the `orders` table.
+- Two `INSERT` statements into the `order_line` table.
+- No `UPDATE` statements are needed to establish the initial order-line relationship.
+
+The test then clears the persistence context, reloads the order, and checks its order lines and total.
+
+**Orphan removal**
+
+The test removes one order line from the order and flushes the changes.
+
+The SQL output confirms that Hibernate executes a `DELETE` statement for the removed order line.
+
+**Cascade remove**
+
+The test removes the order and flushes the changes.
+
+The SQL output confirms that Hibernate deletes the remaining order lines and then deletes the order.
+
+### 6. EntityIdentityTest
+
+The `EntityIdentityTest` checks entity equality and hash code behavior.
+
+The test verifies that:
+
+- A persisted `Product` remains findable in a `HashSet` after flushing.
+- A product loaded in a new persistence context is equal to the original product.
+- The reloaded product is not the same Java object as the original product.
+
+This demonstrates that entity equality is based on persistent identity rather than Java object identity.
+
+### 7. Test Results
+
+The `OrderCascadeTest` and `EntityIdentityTest` were executed.
+
+```text
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0
+
+BUILD SUCCESS
 ```
+
+All five tests passed successfully.
+
+### 8. Bidirectional Association and toString()
+
+To test the effect of bidirectional relationships in `toString()`, I temporarily modified:
+
+- `Order.toString()` to include its `lines` collection.
+- `OrderLine.toString()` to include its `order` reference.
+
+When printing an order, the two `toString()` methods repeatedly called each other because the entities reference each other.
+
+The test resulted in:
+
+```text
+ToStringPitfallTest.printOrder » StackOverflow
+
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0
+
+BUILD FAILURE
+```
+
+The stack trace showed repeated calls between `Order.toString()` and `OrderLine.toString()`, causing infinite recursion and a `StackOverflowError`.
+
+After the experiment, both `toString()` methods were restored to include scalar fields only, and the temporary test was removed.
+
+This demonstrates why bidirectional entity relationships should not be included in entity `toString()` methods.
