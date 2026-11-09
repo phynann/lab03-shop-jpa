@@ -14,7 +14,11 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Limit;
+import org.springframework.data.domain.ScrollPosition;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.Window;
 
 import java.math.BigDecimal;
 import java.time.Instant;
@@ -179,5 +183,52 @@ class OrderRepositoryTest {
         assertNotNull(
                 result.getContent().get(0).getCustomer().getName()
         );
+    }
+
+    @Test
+    void sliceFeedContinuesFromCursorWithoutPageNumbers() {
+        setupData();
+
+        Slice<OrderSummary> first = orders.findFeedSlice(
+                null,
+                null,
+                PageRequest.of(0, 2)
+        );
+
+        assertEquals(2, first.getNumberOfElements());
+        assertTrue(first.hasNext());
+        OrderSummary last = first.getContent().getLast();
+
+        Slice<OrderSummary> next = orders.findFeedSlice(
+                last.getPlacedAt(),
+                last.getId(),
+                PageRequest.of(0, 2)
+        );
+
+        assertEquals(2, next.getNumberOfElements());
+        assertTrue(next.getContent().getFirst().getPlacedAt()
+                .isBefore(last.getPlacedAt()));
+    }
+
+    @Test
+    void keysetWindowContinuesFromTheLastPosition() {
+        setupData();
+
+        Window<Order> first = orders.findAllByOrderByPlacedAtDescIdDesc(
+                ScrollPosition.keyset(),
+                Limit.of(2)
+        );
+
+        assertEquals(2, first.size());
+        assertTrue(first.hasNext());
+
+        Window<Order> next = orders.findAllByOrderByPlacedAtDescIdDesc(
+                first.positionAt(first.size() - 1),
+                Limit.of(2)
+        );
+
+        assertEquals(2, next.size());
+        assertTrue(next.getContent().getFirst().getPlacedAt()
+                .isBefore(first.getContent().getLast().getPlacedAt()));
     }
 }

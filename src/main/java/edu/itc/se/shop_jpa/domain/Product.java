@@ -34,6 +34,10 @@ public class Product {
     @Column(nullable = false)
     private int stock;
 
+    @Version
+    @Column(nullable = false)
+    private long version;
+
     @ManyToMany(cascade = {
             CascadeType.PERSIST,
             CascadeType.MERGE

@@ -201,3 +201,188 @@ CREATE INDEX idx_product_category_amount ON product (category, amount);
 ```
 
 On restart, Flyway applies `2 - indexes`; `flyway_schema_history` then contains the original V1 row and the V2 row. The H2 console can be used to capture the local plans for the paged `/api/orders` query. Before V2, H2 reports a table scan for the unindexed access path; after V2, it can use `idx_orders_customer_placed` for customer/order-date filtering and ordering. Exact plan text is database/version dependent, so the authoritative plans are the ones printed by the H2 console for the current run.
+## Reporting, feeds, stock reservation, and bulk import
+
+### Product report
+
+`GET /api/reports/products` accepts any combination of `q`, `category`,
+`maxPrice`, `minStock`, and `tag`. `sort` accepts a whitelisted attribute and
+optional `asc`/`desc` direction, for example:
+
+```text
+/api/reports/products?category=HARDWARE&minStock=1&tag=sale&sort=amount,desc
+```
+
+The custom `ProductReportRepositoryImpl` builds the query with JPA Criteria
+and generated static metamodel attributes. The product-to-tag join is added to
+the main query only when the tag filter is present. `tagCount` uses the
+collection-size expression, and the selected columns are projected into
+`ProductReportRow` with `CriteriaBuilder.construct`.
+
+### Order feeds
+
+Both feed implementations return `{ items, nextCursor, hasNext }`. The
+Slice-based endpoint is `/api/orders/feed`; `/api/orders/feed/keyset` uses
+Spring Data's `Window<Order>` scrolling support. Both accept `size` (1–100,
+default 20) and `after=<placedAt>,<id>`. Ordering is descending by both
+`placedAt` and `id`, so equal timestamps have a stable tie-breaker.
+`nextCursor` is `null` when the response has no next window.
+
+Representative SQL shapes (Hibernate binds all values using `?`):
+
+```sql
+-- Slice feed. The query has a constant first page and a cursor predicate;
+-- Spring Data limits it to size + 1 rows to determine hasNext.
+select o.id, o.customer_id, o.placed_at, o.status, o.version
+from orders o
+where (? is null or o.placed_at < ?
+       or (o.placed_at = ? and o.id < ?))
+order by o.placed_at desc, o.id desc
+fetch first ? rows only;
+
+-- Keyset feed. The first window has no key predicate; subsequent windows
+-- seek from the last (placed_at, id) key, without counting skipped rows.
+select o.id, o.customer_id, o.placed_at, o.status, o.version
+from orders o
+where o.placed_at < ?
+   or (o.placed_at = ? and o.id < ?)
+order by o.placed_at desc, o.id desc
+fetch first ? rows only;
+```
+
+The first Slice window omits the cursor condition when `after` is absent.
+Spring Data can render a keyset window as a lexicographic seek condition (the
+exact Boolean form varies by dialect). An offset query at offset 100,000 must
+walk/discard roughly 100,000 ordered rows; keyset scrolling starts at the
+cursor key and reads only the requested window. Migration `V3` adds an index
+on `(placed_at desc, id desc)` to support that seek/order.
+
+### Stock reservations
+
+`StockService.reserve` takes a pessimistic write lock on the product row,
+checks availability, and decrements in one transaction. Two comparison
+variants are included: `reserveOptimistic` retries version conflicts using the
+`Product.version` column, while `reserveAtomic` issues one guarded update:
+
+```sql
+update product
+set stock = stock - ?, version = version + 1
+where id = ? and stock >= ?;
+```
+
+The repository includes a 10-caller concurrency test for all three variants.
+Each run verifies exactly five successful reservations, five
+`OutOfStockException`s, and final stock zero. The test logs elapsed wall time
+for direct comparison; the values depend on the machine and database and must
+be taken from the test output rather than treated as fixed performance claims.
+The ORM-backed variants issue a locked select and a version-checked update:
+
+```sql
+select p.* from product p where p.id = ? for update;
+update product
+set stock = ?, version = ?
+where id = ? and version = ?;
+```
+
+### Bulk catalogue import
+
+The CSV header is `sku;name;amount;currency;category;stock`. The stateless
+importer owns a Hibernate `StatelessSession` and transaction, uses JDBC batches
+of 500, and calls `insertMultiple` for each chunk. The comparison variants run
+`saveAll` in one transaction, either retaining the persistence context or
+flushing and clearing it every 500 rows.
+
+Run the workload and collect machine-specific results with:
+
+```powershell
+.\mvnw.cmd -q test -Dtest=StockReservationTest,BulkImportTest
+```
+
+`BulkImportTest` creates 50,000 rows and logs wall time and sampled peak heap
+delta for all three strategies, and verifies that all 50,000 rows were
+inserted. Its measurements are not asserted as fixed thresholds because H2
+timings and available heap vary by runtime. The requested sub-10-second
+stateless-import target must be verified on the machine used for evaluation.
+
+### Schema diagram
+
+The six physical tables are `CUSTOMER`, `ORDERS`, `ORDER_LINE`, `PRODUCT`,
+`TAG`, and `PRODUCT_TAG` (the many-to-many association table):
+
+```mermaid
+erDiagram
+    CUSTOMER ||--o{ ORDERS : places
+    ORDERS ||--|{ ORDER_LINE : contains
+    PRODUCT ||--o{ ORDER_LINE : "is sold as"
+    PRODUCT ||--o{ PRODUCT_TAG : has
+    TAG ||--o{ PRODUCT_TAG : labels
+    CUSTOMER {
+        bigint id PK
+        varchar email UK
+        varchar ship_city
+    }
+    ORDERS {
+        bigint id PK
+        bigint customer_id FK
+        varchar status
+        timestamptz placed_at
+        bigint version
+    }
+    ORDER_LINE {
+        bigint id PK
+        bigint order_id FK
+        bigint product_id FK
+        int quantity
+        decimal amount
+    }
+    PRODUCT {
+        bigint id PK
+        varchar sku UK
+        decimal amount
+        char currency
+        varchar category
+        int stock
+        bigint version
+    }
+    TAG {
+        bigint id PK
+        varchar name UK
+    }
+    PRODUCT_TAG {
+        bigint product_id PK, FK
+        bigint tag_id PK, FK
+    }
+```
+
+### Repository method SQL reference
+
+The statements below describe the SQL shapes for the repository methods
+declared by this project; generated aliases, selected columns, and pagination
+syntax are dialect-dependent. Bind values are shown as `?`. Enable
+`org.hibernate.SQL=DEBUG` and `org.hibernate.orm.jdbc.bind=TRACE` to capture
+the exact SQL and bindings for the local Hibernate/H2 version.
+
+| Repository method | SQL shape |
+|---|---|
+| `CustomerRepository` (no declared query methods) | — |
+| `ProductRepository.existsBySku(sku)` | `select p.id from product p where p.sku = ? fetch first 1 row only` (existence projection) |
+| `findTop3ByCategoryOrderByPriceAmountDesc(category)` | `select p.* from product p where p.category = ? order by p.amount desc fetch first 3 rows only` |
+| `findByTagsName(name)` | `select p.* from product p join product_tag pt on pt.product_id=p.id join tag t on t.id=pt.tag_id where t.name = ?` |
+| `findForUpdate(id)` | `select p.* from product p where p.id = ? for update` |
+| `decrementStockIfAvailable(id, qty)` | `update product set stock = stock - ?, version = version + 1 where id = ? and stock >= ?` |
+| `findLowStock(min)` | `select p.* from product p where p.stock < ? order by p.stock` (native query) |
+| `findProductReport(...)` | `select p.sku, p.name, p.amount, p.stock, (select count(*) from product_tag pt where pt.product_id=p.id) from product p [join product_tag ... join tag ... when tag is supplied] where [optional predicates] group by p.id, p.sku, p.name, p.amount, p.stock order by [whitelisted column]` |
+| `ProductRepository.findAll(specification, pageable)` | `select p.* from product p where [optional specification predicates] order by ... offset ? rows fetch first ? rows only` plus a count query for `Page` |
+| `findByCustomerEmailAndStatus(email, status)` | `select o.* from orders o join customer c on c.id=o.customer_id where c.email = ? and o.status = ?` |
+| `findByCustomerEmailAndStatusOrderByPlacedAtDesc(email, status)` | `select o.* from orders o join customer c on c.id=o.customer_id where c.email = ? and o.status = ? order by o.placed_at desc` |
+| `countByStatus(status)` | `select count(*) from orders o where o.status = ?` |
+| `findFirstByCustomerIdOrderByPlacedAtDesc(customerId)` | `select o.* from orders o where o.customer_id = ? order by o.placed_at desc fetch first 1 row only` |
+| `findByStatus(status, pageable)` | `select o.* from orders o where o.status = ? order by ... offset ? rows fetch first ? rows only` plus a count query for `Page` |
+| `findWithLinesByCustomerEmail(email)` | `select distinct o.*, l.*, p.* from orders o join customer c on c.id=o.customer_id join order_line l on l.order_id=o.id join product p on p.id=l.product_id where c.email = ? order by o.placed_at desc` |
+| `countLinesByStatus(status)` | `select count(l.id) from order_line l join orders o on o.id=l.order_id where o.status = ?` |
+| `findFeedSlice(afterPlacedAt, afterId, pageable)` | The Slice SQL shown above; no count query |
+| `findAllByOrderByPlacedAtDescIdDesc(position, limit)` | The keyset SQL shown above; first position omits the seek predicate |
+| Inherited `findById(id)` / `findAll()` / `save(entity)` / `delete(entity)` | `select p.* from product p where p.id = ?`; `select p.* from product p`; `insert into product (...) values (...)` or `update product set ... where id = ? and version = ?`; `delete from product where id = ? and version = ?` (table varies with repository entity) |
+
+`ProductService.search` supplies optional category/name/amount/stock
+predicates to `ProductRepository.findAll(specification, pageable)`.
