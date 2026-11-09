@@ -8,6 +8,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
+import java.util.UUID;
 
 @Component
 public class TestData {
@@ -49,5 +50,21 @@ public class TestData {
             orders.save(order);
         }
         orders.flush();
+    }
+
+    @Transactional
+    public Long newOrder() {
+        Customer customer = customers.findAll().stream().findFirst()
+                .orElseGet(() -> customers.save(new Customer(
+                        "Shop Customer", "shop@example.com",
+                        new Address("1 Main Street", "Phnom Penh", "12000"),
+                        new Address("1 Main Street", "Phnom Penh", "12000"))));
+        Product product = products.save(new Product(
+                "ORD-" + UUID.randomUUID().toString().substring(0, 8),
+                "Order product", Money.eur("10.00"), Category.HARDWARE));
+        Order order = new Order(customer);
+        order.setStatus(OrderStatus.NEW);
+        order.addLine(product, 1);
+        return orders.save(order).getId();
     }
 }

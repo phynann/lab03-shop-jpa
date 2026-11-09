@@ -386,3 +386,4 @@ the exact SQL and bindings for the local Hibernate/H2 version.
 
 `ProductService.search` supplies optional category/name/amount/stock
 predicates to `ProductRepository.findAll(specification, pageable)`.
+
