@@ -1,3 +1,4 @@
+
 package edu.itc.se.shop_jpa.domain;
 
 import java.util.HashSet;
@@ -9,8 +10,7 @@ import jakarta.persistence.*;
 public class Tag {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "tag_seq")
-    @SequenceGenerator(name = "tag_seq", sequenceName = "tag_seq", allocationSize = 50)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false, unique = true, length = 50)
@@ -19,18 +19,31 @@ public class Tag {
     @ManyToMany(mappedBy = "tags")
     private Set<Product> products = new HashSet<>();
 
-    protected Tag() { }
-
-    public Tag(String name) { this.name = name; }
-
-    public Long getId() { return id; }
-    public String getName() { return name; }
-    public Set<Product> getProducts() { return products; }
-    public void setName(String name) { this.name = name; }
-
-    @Override public boolean equals(Object o) {
-        return this == o || (o instanceof Tag other && id != null && id.equals(other.getId()));
+    protected Tag() {
     }
-    @Override public int hashCode() { return Tag.class.hashCode(); }
-    @Override public String toString() { return "Tag[id=%d, name=%s]".formatted(id, name); }
+
+    public Tag(String name) {
+        this.name = name;
+    }
+
+    public Long getId() {
+        return id;
+    }
+
+    public String getName() {
+        return name;
+    }
+
+    public void setName(String name) {
+        this.name = name;
+    }
+
+    public Set<Product> getProducts() {
+        return products;
+    }
+
+    @Override
+    public String toString() {
+        return "Tag[id=" + id + ", name=" + name + "]";
+    }
 }

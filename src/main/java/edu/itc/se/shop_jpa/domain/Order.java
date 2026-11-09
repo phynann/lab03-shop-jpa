@@ -1,10 +1,11 @@
+
 package edu.itc.se.shop_jpa.domain;
 
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
+
 import jakarta.persistence.*;
 
 @Entity
@@ -12,8 +13,15 @@ import jakarta.persistence.*;
 public class Order {
 
     @Id
-    @GeneratedValue(strategy = GenerationType.SEQUENCE, generator = "orders_seq")
-    @SequenceGenerator(name = "orders_seq", sequenceName = "orders_seq", allocationSize = 50)
+    @GeneratedValue(
+        strategy = GenerationType.SEQUENCE,
+        generator = "orders_seq"
+    )
+    @SequenceGenerator(
+        name = "orders_seq",
+        sequenceName = "orders_seq",
+        allocationSize = 50
+    )
     private Long id;
 
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
@@ -27,48 +35,116 @@ public class Order {
     @Column(name = "placed_at", nullable = false)
     private Instant placedAt = Instant.now();
 
-    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OneToMany(
+        mappedBy = "order",
+        fetch = FetchType.LAZY,
+        cascade = CascadeType.ALL,
+        orphanRemoval = true
+    )
     private List<OrderLine> lines = new ArrayList<>();
 
     @Version
     @Column(nullable = false)
     private long version;
 
-    protected Order() { }
+    // Default constructor required by JPA
+    protected Order() {
+    }
 
-    public Order(Customer customer) { this.customer = customer; }
+    // Constructor
+    public Order(Customer customer) {
+        this.customer = customer;
+    }
 
+    // Add order line
     public OrderLine addLine(Product product, int quantity) {
-        OrderLine line = new OrderLine(this, product, quantity, product.getPrice());
+
+        OrderLine line = new OrderLine(
+            this,
+            product,
+            quantity,
+            product.getPrice()
+        );
+
         lines.add(line);
+
         return line;
     }
 
+    // Remove order line
     public void removeLine(OrderLine line) {
         lines.remove(line);
         line.setOrder(null);
     }
 
-    public List<OrderLine> getLines() { return Collections.unmodifiableList(lines); }
+    // Getters
+    public Long getId() {
+        return id;
+    }
 
+    public Customer getCustomer() {
+        return customer;
+    }
+
+    public OrderStatus getStatus() {
+        return status;
+    }
+
+    public Instant getPlacedAt() {
+        return placedAt;
+    }
+
+    public List<OrderLine> getLines() {
+        return lines;
+    }
+
+    public long getVersion() {
+        return version;
+    }
+
+    // Setters
+    public void setStatus(OrderStatus status) {
+        this.status = status;
+    }
+
+    public void setPlacedAt(Instant placedAt) {
+        this.placedAt = placedAt;
+    }
+
+    // Calculate total price
     public Money total() {
+
         BigDecimal sum = BigDecimal.ZERO;
-        for (OrderLine l : lines) {
-            sum = sum.add(l.getUnitPrice().times(l.getQuantity()).amount());
+
+        for (OrderLine line : lines) {
+            sum = sum.add(
+                line.getUnitPrice()
+                    .times(line.getQuantity())
+                    .amount()
+            );
         }
+
         return new Money(sum, "EUR");
     }
 
-    public Long getId() { return id; }
-    public Customer getCustomer() { return customer; }
-    public OrderStatus getStatus() { return status; }
-    public Instant getPlacedAt() { return placedAt; }
-    public long getVersion() { return version; }
-    public void setStatus(OrderStatus status) { this.status = status; }
-
-    @Override public boolean equals(Object o) {
-        return this == o || (o instanceof Order other && id != null && id.equals(other.getId()));
+    // Equals
+    @Override
+    public boolean equals(Object o) {
+        return this == o ||
+            (o instanceof Order other &&
+             id != null &&
+             id.equals(other.getId()));
     }
-    @Override public int hashCode() { return Order.class.hashCode(); }
-    @Override public String toString() { return "Order[id=%d, status=%s]".formatted(id, status); }
+
+    // HashCode
+    @Override
+    public int hashCode() {
+        return Order.class.hashCode();
+    }
+
+    // ToString
+    @Override
+    public String toString() {
+        return "Order[id=%d, status=%s]".formatted(id, status);
+    }
 }
