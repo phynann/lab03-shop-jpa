@@ -1,4 +1,4 @@
-package edu.kh.se.shop_jpa.domain;
+package edu.itc.se.shop_jpa.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -8,10 +8,6 @@ import org.springframework.boot.data.jpa.test.autoconfigure.DataJpaTest;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase;
 import org.springframework.boot.jdbc.test.autoconfigure.AutoConfigureTestDatabase.Replace;
 import org.springframework.boot.jpa.test.autoconfigure.TestEntityManager;
-
-import edu.itc.se.shop_jpa.domain.Category;
-import edu.itc.se.shop_jpa.domain.Money;
-import edu.itc.se.shop_jpa.domain.Product;
 
 @DataJpaTest
 @AutoConfigureTestDatabase(replace = Replace.NONE)
