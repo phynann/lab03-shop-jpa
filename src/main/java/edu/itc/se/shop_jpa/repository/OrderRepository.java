@@ -13,8 +13,17 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.data.jpa.repository.EntityGraph;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
+
+    List<Order> findByStatus(OrderStatus status);
+
+    @Query("select distinct o from Order o join fetch o.lines where o.status = :status")
+    List<Order> findByStatusWithLines(@Param("status") OrderStatus status);
+
+    @EntityGraph(attributePaths = {"lines", "lines.product"})
+    List<Order> findWithGraphByStatus(OrderStatus status);
 
     // Find orders by customer email and status
     List<Order> findByCustomerEmailAndStatus(

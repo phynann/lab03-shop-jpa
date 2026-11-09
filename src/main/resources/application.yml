@@ -14,6 +14,10 @@ spring:
     properties:
       hibernate:
         generate_statistics: true
+        jdbc.batch_size: 50
+        order_inserts: true
+        order_updates: true
+        default_batch_fetch_size: 32
 
   h2:
     console:

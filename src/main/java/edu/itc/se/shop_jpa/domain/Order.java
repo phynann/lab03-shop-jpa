@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.BatchSize;
 
 @Entity
 @Table(name = "orders")
@@ -41,6 +42,7 @@ public class Order {
         cascade = CascadeType.ALL,
         orphanRemoval = true
     )
+    @BatchSize(size = 16)
     private List<OrderLine> lines = new ArrayList<>();
 
     @Version

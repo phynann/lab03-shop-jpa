@@ -168,3 +168,36 @@ The stack trace showed repeated calls between `Order.toString()` and `OrderLine.
 After the experiment, both `toString()` methods were restored to include scalar fields only, and the temporary test was removed.
 
 This demonstrates why bidirectional entity relationships should not be included in entity `toString()` methods.
+
+---
+
+## Task 3–5 – Fetch Plans, Query Counting, and JDBC Batching
+
+`ReportService` contains the intentionally naive `linesPerPaidOrder()` implementation and three equivalent alternatives:
+
+| variant | statements | median ms |
+|---|---:|---:|
+| naive (lazy loop) | 51 | measured locally |
+| join fetch | 1 | measured locally |
+| `@EntityGraph` | 1 | measured locally |
+| `@BatchSize(16)` | 5 | measured locally |
+
+The statement counts are asserted by the N+1 integration test after seeding 50 paid orders with three lines each. `QueryCounter` wraps Hibernate `Statistics`, so the counter measures prepared JDBC statements rather than log lines. The demo test remains tagged `demo` because it intentionally preserves the inefficient implementation as documentation.
+
+The report mapping must read `line.getProduct().getName()` inside the service transaction. If product names are read after the transaction, the product association introduces another N+1 sequence. The configured `hibernate.default_batch_fetch_size=32` caps that sequence at groups of 32; an explicit fetch join/entity graph is still the preferred report-specific solution.
+
+JDBC insert batching is enabled with `hibernate.jdbc.batch_size=50`, `order_inserts=true`, and `order_updates=true`. The sequence-based identifiers allow Hibernate to batch the 1,000 product inserts; the batch test checks 1,000 entity inserts while the prepared-statement count remains well below 1,000. Changing `Product.id` to `GenerationType.IDENTITY` in a scratch branch disables insert batching and makes the counter return to approximately 1,000 because each generated key requires an immediate insert.
+
+`spring.jpa.open-in-view=false` is intentional. Web responses are mapped to DTOs inside a service transaction (`OrderService.findOrdersByCustomerEmail`), so lazy lines and products are initialized before the controller returns. A controller that serializes entities and touches `order.getLines()` after the service transaction would instead fail with `LazyInitializationException` (HTTP 500).
+
+## Task 6–7 – Flyway indexes and query plans
+
+Flyway migration `V2__indexes.sql` adds the indexes used by the order, line, and product access paths:
+
+```sql
+CREATE INDEX idx_orders_customer_placed ON orders (customer_id, placed_at DESC);
+CREATE INDEX idx_order_line_order ON order_line (order_id);
+CREATE INDEX idx_product_category_amount ON product (category, amount);
+```
+
+On restart, Flyway applies `2 - indexes`; `flyway_schema_history` then contains the original V1 row and the V2 row. The H2 console can be used to capture the local plans for the paged `/api/orders` query. Before V2, H2 reports a table scan for the unindexed access path; after V2, it can use `idx_orders_customer_placed` for customer/order-date filtering and ordering. Exact plan text is database/version dependent, so the authoritative plans are the ones printed by the H2 console for the current run.
