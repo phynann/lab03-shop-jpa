@@ -1,4 +1,4 @@
-package edu.kh.se.shop_jpa.domain;
+package edu.itc.se.shop_jpa.domain;
 
 import java.math.BigDecimal;
 import java.time.Instant;

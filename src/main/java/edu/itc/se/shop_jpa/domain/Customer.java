@@ -1,4 +1,4 @@
-package edu.kh.se.shop_jpa.domain;
+package edu.itc.se.shop_jpa.domain;
 
 import jakarta.persistence.*;
 
