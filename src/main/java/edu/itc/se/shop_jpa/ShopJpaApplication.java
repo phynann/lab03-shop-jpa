@@ -1,4 +1,4 @@
-package edu.kh.se.shop_jpa;
+package edu.itc.se.shop_jpa;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
