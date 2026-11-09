@@ -11,10 +11,14 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 
 public interface ProductRepository
         extends JpaRepository<Product, Long>,
-                JpaSpecificationExecutor<Product> {
+                JpaSpecificationExecutor<Product>,
+                ProductReportRepository {
 
     // Derived queries
 
@@ -25,6 +29,24 @@ public interface ProductRepository
     );
 
     List<Product> findByTagsName(String name);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select p from Product p where p.id = :id")
+    java.util.Optional<Product> findForUpdate(@Param("id") Long id);
+
+    @Modifying(clearAutomatically = true, flushAutomatically = true)
+    @Query(
+        value = """
+            update product
+            set stock = stock - :qty, version = version + 1
+            where id = :id and stock >= :qty
+            """,
+        nativeQuery = true
+    )
+    int decrementStockIfAvailable(
+            @Param("id") Long id,
+            @Param("qty") int qty
+    );
 
     // Native SQL query
 

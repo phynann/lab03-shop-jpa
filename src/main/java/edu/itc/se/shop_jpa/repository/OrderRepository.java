@@ -10,9 +10,14 @@ import java.util.Optional;
 
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Limit;
+import org.springframework.data.domain.ScrollPosition;
+import org.springframework.data.domain.Slice;
+import org.springframework.data.domain.Window;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import java.time.Instant;
 
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
@@ -63,5 +68,24 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
             """)
     long countLinesByStatus(
             @Param("status") OrderStatus status
+    );
+
+    @Query("""
+            select o
+            from Order o
+            where (:afterPlacedAt is null
+                   or o.placedAt < :afterPlacedAt
+                   or (o.placedAt = :afterPlacedAt and o.id < :afterId))
+            order by o.placedAt desc, o.id desc
+            """)
+    Slice<OrderSummary> findFeedSlice(
+            @Param("afterPlacedAt") Instant afterPlacedAt,
+            @Param("afterId") Long afterId,
+            Pageable pageable
+    );
+
+    Window<Order> findAllByOrderByPlacedAtDescIdDesc(
+            ScrollPosition position,
+            Limit limit
     );
 }
