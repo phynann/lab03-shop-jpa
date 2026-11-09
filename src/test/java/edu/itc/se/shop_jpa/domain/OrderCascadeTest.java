@@ -1,4 +1,4 @@
-package edu.itc.se.shop_jpa.domain;
+package edu.kh.se.shop_jpa.domain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
