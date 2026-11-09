@@ -4,7 +4,16 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 
 @Embeddable
-public record Address(
-        @Column(name = "street", length = 120) String street,
-        @Column(name = "city", length = 80) String city,
-        @Column(name = "zip", length = 10) String zip) { }
+public class Address {
+    private String street;
+    private String city;
+    private String zip;
+
+    public Address(String street, String city, String zip) {
+        this.street = street;
+        this.city = city;
+        this.zip = zip;
+    }
+
+    protected Address() {}
+}
